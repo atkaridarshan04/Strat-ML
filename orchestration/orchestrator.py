@@ -164,14 +164,26 @@ class Orchestrator:
         best_result = self.memory.best_model()
         print(f"\n✓ Best model: {best_result.model_name} (Accuracy: {best_result.accuracy:.4f})")
         
-        # Get the trained best model and retrain it to get pipeline
+        # Use a simpler model for interpretability if best model is too complex
+        print(f"✓ Computing feature importance...")
         best_model_obj = models[best_result.model_name]
+        
+        # For RandomForest, use a lighter version for interpretability
+        if best_result.model_name == 'RandomForest' and hasattr(best_model_obj, 'n_estimators'):
+            if best_model_obj.n_estimators > 100:
+                print(f"  (Using simplified model for faster analysis)")
+                from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+                if dataset_info.task_type.value == 'classification':
+                    best_model_obj = RandomForestClassifier(n_estimators=50, max_depth=10, random_state=42)
+                else:
+                    best_model_obj = RandomForestRegressor(n_estimators=50, max_depth=10, random_state=42)
+        
         best_pipeline = Pipeline([
             ('preprocessor', preprocessor),
             ('model', best_model_obj)
         ])
         
-        # Retrain best model for interpretability
+        # Train on subset for speed
         X = df.drop(columns=[dataset_info.target_column])
         y = df[dataset_info.target_column]
         X_train, X_test, y_train, y_test = train_test_split(
