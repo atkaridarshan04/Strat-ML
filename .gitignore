@@ -1,0 +1,48 @@
+datasets
+venv
+*.csv
+*.pdf
+
+# Byte-code files
+*.pyc
+__pycache__/
+
+
+# Environments
+.venv/
+venv/
+env/
+
+
+# Build artifacts
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Editors and IDEs
+# VS Code
+.vscode/
+# PyCharm
+.idea/
+# Other
+*.swp
+
+
+# OS-specific files
+.DS_Store # macOS
+
+
+# Secrets/Credentials (add your specific files as needed)
+.env
+
