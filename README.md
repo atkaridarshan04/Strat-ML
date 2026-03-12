@@ -12,6 +12,8 @@ A research-oriented AutoML system emphasizing interpretability, dataset understa
 - **Model Interpretability**: Feature importance analysis
 - **Decision Traceability**: Complete audit trail of agent decisions
 - **Comprehensive Reports**: PDF research reports with all findings
+- **Terminal Visualization**: Real-time graphs and tables using plotext
+- **Structured Output**: Clean tabular display of results in terminal
 
 ## Installation
 
@@ -22,13 +24,24 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python cli/main.py <dataset.csv> --output report.pdf --max-iterations 5
+python cli/main.py <dataset.csv> --output report.pdf --max-iterations 5 [--enable-tuning]
 ```
 
 Example:
 ```bash
+# Basic run without hyperparameter tuning
 python cli/main.py data/iris.csv --output iris_report.pdf
+
+# With hyperparameter tuning enabled
+python cli/main.py data/iris.csv --output iris_report.pdf --enable-tuning
 ```
+
+### CLI Options
+
+- `dataset`: Path to CSV dataset (required)
+- `--output`: Output PDF report path (default: experiment_report.pdf)
+- `--max-iterations`: Maximum experiment iterations (default: 5)
+- `--enable-tuning`: Enable hyperparameter tuning (disabled by default)
 
 ## Architecture
 

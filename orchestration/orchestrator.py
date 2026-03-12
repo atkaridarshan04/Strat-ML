@@ -1,6 +1,8 @@
 import pandas as pd
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
+from tabulate import tabulate
+import plotext as plt
 from data.dataset_interpreter import DatasetInterpreter
 from data.profiler import DatasetProfiler
 from data.preprocessing_planner import PreprocessingPlanner
@@ -17,7 +19,7 @@ from reporting.final_report import FinalReportGenerator
 from core.schemas import AgentAction
 
 class Orchestrator:
-    def __init__(self, max_iterations: int = 5):
+    def __init__(self, max_iterations: int = 5, enable_tuning: bool = False):
         self.interpreter = DatasetInterpreter()
         self.profiler = DatasetProfiler()
         self.meta_extractor = MetaFeatureExtractor()
@@ -26,7 +28,7 @@ class Orchestrator:
         self.tuner = HyperparameterTuner()
         self.memory = ExperimentMemory()
         self.state_builder = StateBuilder()
-        self.rule_engine = RuleEngine(max_iterations=max_iterations)
+        self.rule_engine = RuleEngine(max_iterations=max_iterations, enable_tuning=enable_tuning)
         self.decision_tracker = DecisionTracker()
         self.interpretability = InterpretabilityAnalyzer()
     
@@ -40,35 +42,46 @@ class Orchestrator:
         # Load dataset
         print("\n[1/3] Dataset Analysis Phase")
         df = pd.read_csv(dataset_path)
-        print(f"✓ Loaded dataset: {df.shape[0]} samples, {df.shape[1]} columns")
         
         # Interpret dataset
         dataset_info = self.interpreter.interpret(df)
-        print(f"✓ Task detected: {dataset_info.task_type.value}")
-        print(f"✓ Features: {dataset_info.numeric_features} numeric, {dataset_info.categorical_features} categorical")
         
         # Profile dataset
         profile = self.profiler.profile(df, dataset_info.target_column, dataset_info.task_type)
-        print(f"✓ Missing ratio: {profile.missing_ratio:.4f}")
-        if profile.class_imbalance:
-            print(f"✓ Class imbalance: {profile.class_imbalance:.4f}")
         
         # Extract meta-features
         meta_features = self.meta_extractor.extract(
             df, dataset_info.target_column, dataset_info.task_type, profile.feature_types
         )
-        print(f"✓ Meta-features extracted")
-        print(f"  - Entropy: {meta_features.feature_entropy_mean:.4f}")
-        print(f"  - Correlation: {meta_features.feature_correlation_mean:.4f}")
-        print(f"  - Dimensionality ratio: {meta_features.dimensionality_ratio:.4f}")
+        
+        # Display dataset info table
+        dataset_table = [
+            ["Samples", df.shape[0]],
+            ["Features", df.shape[1]],
+            ["Task Type", dataset_info.task_type.value],
+            ["Numeric Features", dataset_info.numeric_features],
+            ["Categorical Features", dataset_info.categorical_features],
+            ["Missing Ratio", f"{profile.missing_ratio:.4f}"],
+        ]
+        if profile.class_imbalance:
+            dataset_table.append(["Class Imbalance", f"{profile.class_imbalance:.4f}"])
+        
+        print("\n" + tabulate(dataset_table, headers=["Property", "Value"], tablefmt="grid"))
+        
+        # Display meta-features table
+        meta_table = [
+            ["Entropy (mean)", f"{meta_features.feature_entropy_mean:.4f}"],
+            ["Correlation (mean)", f"{meta_features.feature_correlation_mean:.4f}"],
+            ["Dimensionality Ratio", f"{meta_features.dimensionality_ratio:.4f}"],
+        ]
+        print("\n" + tabulate(meta_table, headers=["Meta-Feature", "Value"], tablefmt="grid"))
         
         # Build preprocessing pipeline
         preprocessor = self.preprocessing_planner.build_pipeline(profile)
-        print(f"✓ Preprocessing pipeline built")
         
         # Get model search space
         available_models = ModelSearchSpace.get_model_names(dataset_info.task_type)
-        print(f"✓ Model search space: {available_models}")
+        print(f"\n✓ Model search space: {', '.join(available_models)}")
         
         # Agent-controlled experiment loop
         print(f"\n[2/3] Agent-Controlled Experiment Phase")
@@ -87,8 +100,6 @@ class Orchestrator:
             iteration += 1
             tried_models.add(current_model_name)
             
-            print(f"\nIteration {iteration}: Testing {current_model_name}{' (tuned)' if current_model_tuned else ''}")
-            
             # Get model (from cached dict)
             model = models[current_model_name]
             
@@ -98,8 +109,6 @@ class Orchestrator:
                 preprocessor, model, current_model_name, iteration, is_tuned=current_model_tuned
             )
             self.memory.add(result)
-            
-            print(f"  Accuracy: {result.accuracy:.4f}, Runtime: {result.runtime:.2f}s")
             
             # Build agent state
             previous_result = self.memory.get_all()[-2] if len(self.memory.get_all()) > 1 else None
@@ -114,9 +123,17 @@ class Orchestrator:
                                               tried_models, current_model_tuned)
             self.decision_tracker.log(decision)
             
-            print(f"  Decision: {decision.action.value}")
-            print(f"  Rule: {decision.rule_triggered}")
-            print(f"  Reason: {decision.reason}")
+            # Display iteration result in table
+            iter_table = [
+                ["Iteration", iteration],
+                ["Model", f"{current_model_name}{' (tuned)' if current_model_tuned else ''}"],
+                ["Accuracy", f"{result.accuracy:.4f}"],
+                ["Runtime", f"{result.runtime:.2f}s"],
+                ["Decision", decision.action.value],
+                ["Rule", decision.rule_triggered],
+            ]
+            print("\n" + tabulate(iter_table, tablefmt="simple"))
+            print(f"Reason: {decision.reason}")
             
             # Execute decision
             if decision.action == AgentAction.TERMINATE:
@@ -124,7 +141,7 @@ class Orchestrator:
                 break
             
             elif decision.action == AgentAction.TUNE_HYPERPARAMETERS:
-                print(f"  → Tuning hyperparameters for {current_model_name}")
+                print(f"→ Tuning hyperparameters for {current_model_name}")
                 
                 # Store baseline
                 baseline_accuracy = result.accuracy
@@ -140,22 +157,63 @@ class Orchestrator:
                     # Update model in cache
                     models[current_model_name] = tuned_model
                     current_model_tuned = True
-                    print(f"  → Tuning complete: {best_params}")
+                    print(f"→ Tuning complete: {best_params}")
                 except Exception as e:
-                    print(f"  ⚠ Tuning failed: {str(e)}")
-                    print(f"  → Continuing with baseline model")
+                    print(f"⚠ Tuning failed: {str(e)}")
+                    print(f"→ Continuing with baseline model")
                     current_model_tuned = False
             
             elif decision.action == AgentAction.SWITCH_MODEL and decision.next_model:
                 # Check if we should rollback from tuning
                 if current_model_tuned and baseline_accuracy and result.accuracy < baseline_accuracy:
-                    print(f"  ⚠ Tuning degraded performance ({result.accuracy:.4f} < {baseline_accuracy:.4f})")
-                    print(f"  → Rolling back to baseline model")
+                    print(f"⚠ Tuning degraded performance ({result.accuracy:.4f} < {baseline_accuracy:.4f})")
+                    print(f"→ Rolling back to baseline model")
                 
                 current_model_name = decision.next_model
                 current_model_tuned = False
                 baseline_accuracy = None
-                print(f"  → Switching to {current_model_name}")
+                print(f"→ Switching to {current_model_name}")
+        
+        # Display experiment summary table with changes
+        all_experiments = self.memory.get_all()
+        exp_table = []
+        for i, exp in enumerate(all_experiments):
+            change = ""
+            if i > 0:
+                prev = all_experiments[i-1]
+                if exp.model_name != prev.model_name:
+                    change = f"Switched from {prev.model_name}"
+                elif exp.is_tuned and not prev.is_tuned:
+                    change = "Hyperparameter tuned"
+                else:
+                    change = "Continued"
+            else:
+                change = "Initial model"
+            
+            exp_table.append([
+                exp.iteration, 
+                exp.model_name, 
+                "Y" if exp.is_tuned else "N", 
+                f"{exp.accuracy:.4f}", 
+                f"{exp.runtime:.2f}",
+                change
+            ])
+        
+        print("\n" + tabulate(exp_table, headers=["Iter", "Model", "Tuned", "Accuracy", "Time(s)", "Change"], tablefmt="grid"))
+        
+        # Plot model comparison bar chart
+        model_labels = [f"{exp.model_name}{'*' if exp.is_tuned else ''} (#{exp.iteration})" 
+                       for exp in all_experiments]
+        accuracies = [exp.accuracy for exp in all_experiments]
+        
+        plt.clear_figure()
+        plt.plotsize(60, 15)
+        plt.bar(model_labels, accuracies)
+        plt.title("Model Accuracy Comparison")
+        plt.xlabel("Model (Iteration)")
+        plt.ylabel("Accuracy")
+        plt.theme("clear")
+        plt.show()
         
         # Interpretability analysis
         print(f"\n[3/3] Analysis & Reporting Phase")
@@ -196,10 +254,23 @@ class Orchestrator:
             best_pipeline, X_test, y_test, list(X.columns)
         )
         
-        print(f"✓ Feature importance computed")
-        print("\nTop 5 features:")
-        for i, (feat, imp) in enumerate(list(feature_importance.items())[:5], 1):
-            print(f"  {i}. {feat}: {imp:.4f}")
+        # Display feature importance table
+        feat_table = [[feat, f"{imp:.4f}"] for feat, imp in list(feature_importance.items())[:10]]
+        print("\n" + tabulate(feat_table, headers=["Feature", "Importance"], tablefmt="grid"))
+        
+        # Plot feature importance
+        top_features = list(feature_importance.items())[:8]
+        feat_names = [f[:15] for f, _ in top_features]  # Truncate long names
+        feat_values = [imp for _, imp in top_features]
+        
+        plt.clear_figure()
+        plt.plotsize(60, 15)
+        plt.bar(feat_names, feat_values)
+        plt.title("Top Feature Importance")
+        plt.xlabel("Features")
+        plt.ylabel("Importance")
+        plt.theme("clear")
+        plt.show()
         
         # Generate report
         print(f"\n✓ Generating PDF report...")

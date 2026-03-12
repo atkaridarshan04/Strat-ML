@@ -33,7 +33,7 @@
 ./run.sh wine_dataset.csv
 
 # Custom output and iterations
-./run.sh wine_dataset.csv --output my_report.pdf --max-iterations 10
+./run.sh adult_income.csv --output report.pdf --max-iteration 4 --enable-tuning
 
 # Or with full python command
 source venv/bin/activate

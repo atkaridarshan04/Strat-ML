@@ -4,11 +4,12 @@ from search.model_space import ModelSearchSpace
 class RuleEngine:
     def __init__(self, improvement_threshold: float = 0.01, 
                  max_iterations: int = 5, runtime_threshold: float = 5.0,
-                 tune_threshold: float = -0.001):
+                 tune_threshold: float = -0.001, enable_tuning: bool = False):
         self.improvement_threshold = improvement_threshold
         self.max_iterations = max_iterations
         self.runtime_threshold = runtime_threshold
         self.tune_threshold = tune_threshold
+        self.enable_tuning = enable_tuning
     
     def decide(self, state: AgentState, current_model: str, 
                available_models: list, tried_models: set, 
@@ -32,7 +33,7 @@ class RuleEngine:
             )
         
         # Rule 3: Small improvement - try tuning before switching
-        if (self.tune_threshold < state.accuracy_trend < self.improvement_threshold 
+        if (self.enable_tuning and self.tune_threshold < state.accuracy_trend < self.improvement_threshold 
             and not current_model_tuned):
             return AgentDecision(
                 action=AgentAction.TUNE_HYPERPARAMETERS,
